@@ -2,38 +2,24 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>이미지 일괄 변환기 - 텍스트 O 버전</title>
+    <title>텍스트 O 버전 - 파일명 최적화 최종</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        /* 깔끔한 화이트 테마 및 블랙 텍스트 */
-        body { font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; background: #ffffff; color: #000000; overflow: hidden; }
-        
-        /* 드롭존을 화면 꽉 차게 배치하여 사용성 극대화 */
+        body { font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; background: #ffffff; color: #000; overflow: hidden; }
         #drop-zone { 
             flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            border: 4px dashed #eeeeee; margin: 40px; border-radius: 30px; cursor: pointer; 
-            transition: all 0.3s;
+            border: 4px dashed #eeeeee; margin: 40px; border-radius: 30px; cursor: pointer; transition: 0.3s;
         }
-        #drop-zone:hover { border-color: #000000; background: #fafafa; }
+        #drop-zone:hover { border-color: #000; background: #fafafa; }
         #drop-zone.hover { border-color: #2ecc71; background: #f4fff8; transform: scale(1.005); }
-
-        .plus-icon { font-size: 50px; color: #dddddd; margin-bottom: 20px; }
-        
-        /* 요청하신 텍스트 수정 및 강조 */
-        .main-text { font-size: 2.5em; font-weight: bold; color: #000000; letter-spacing: -1px; }
-        .sub-text { margin-top: 15px; color: #888888; font-size: 1.1em; }
-
-        #status { text-align: center; padding: 20px; font-weight: bold; color: #2ecc71; font-size: 1.2em; min-height: 1.2em; }
-        
-        /* 결과 미리보기 영역 (스크롤 가능하도록) */
-        #result-container { 
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); 
-            gap: 20px; padding: 0 40px 40px 40px; overflow-y: auto; max-height: 40vh; 
-        }
-        .preview-box { background: #ffffff; padding: 10px; border-radius: 12px; border: 1px solid #f0f0f0; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        .preview-box img { width: 100%; border-radius: 6px; margin-bottom: 8px; }
-        .preview-box small { font-weight: bold; font-size: 0.85em; }
-
+        .plus-icon { font-size: 50px; color: #ddd; margin-bottom: 20px; }
+        .main-text { font-size: 2.5em; font-weight: bold; margin-bottom: 10px; }
+        .sub-text { color: #888; font-size: 1.1em; text-align: center; line-height: 1.6; }
+        .highlight { color: #000; font-weight: bold; border-bottom: 2px solid #2ecc71; }
+        #status { text-align: center; padding: 10px; font-weight: bold; color: #2ecc71; font-size: 1.1em; }
+        #result-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; padding: 0 40px 40px; overflow-y: auto; max-height: 35vh; }
+        .preview-box { background: #fff; padding: 10px; border-radius: 12px; border: 1px solid #f0f0f0; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .preview-box img { width: 100%; border-radius: 6px; margin-bottom: 5px; border: 1px solid #eee; }
         canvas { display: none; }
     </style>
 </head>
@@ -42,12 +28,15 @@
     <div id="drop-zone">
         <div class="plus-icon">+</div>
         <div class="main-text">텍스트 O 버전</div>
-        <div class="sub-text">지정된 명칭으로 4종 규격 자동 변환 (PNG/JPG 최적화)</div>
+        <div class="sub-text">
+            1000/1200 이미지를 한꺼번에 드롭하세요!<br>
+            <span class="highlight">원본 이름 없이 규격 명칭으로만 모든 파일이 추출됩니다.</span>
+        </div>
     </div>
     
     <div id="status"></div>
     <div id="result-container"></div>
-    <input type="file" id="file-input" accept="image/*" style="display: none;">
+    <input type="file" id="file-input" accept="image/*" multiple style="display: none;">
     <canvas id="canvas"></canvas>
 
 <script>
@@ -58,73 +47,88 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
 
-    // 고정 명칭 및 규격
-    const targetSpecs = [
-        { w: 1000, h: 1000, name: '1000' },
-        { w: 1200, h: 750,  name: '1200' },
-        { w: 600,  h: 800,  name: 'y_thumbnail_banner' },
-        { w: 1080, h: 720,  name: 'c_rolling_banner' }
-    ];
-
     dropZone.onclick = () => fileInput.click();
     dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('hover'); };
     dropZone.ondragleave = () => dropZone.classList.remove('hover');
-    dropZone.ondrop = (e) => { e.preventDefault(); dropZone.classList.remove('hover'); handleFile(e.dataTransfer.files[0]); };
-    fileInput.onchange = (e) => handleFile(e.target.files[0]);
+    dropZone.ondrop = (e) => { e.preventDefault(); dropZone.classList.remove('hover'); handleFiles(e.dataTransfer.files); };
+    fileInput.onchange = (e) => handleFiles(e.target.files);
 
-    async function handleFile(file) {
-        if (!file || !file.type.startsWith('image/')) return;
-
-        status.innerText = "⚡ 규격 변환 및 용량 최적화 중...";
+    async function handleFiles(files) {
+        if (files.length === 0) return;
+        
+        status.innerText = "⚡ 불필요한 접미사 제거 중...";
         resultContainer.innerHTML = '';
         const zip = new JSZip();
 
-        for (const spec of targetSpecs) {
-            canvas.width = spec.w;
-            canvas.height = spec.h;
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (!file.type.startsWith('image/')) continue;
+
+            const imgData = await getImageData(file);
+            const ratio = imgData.width / imgData.height;
             
-            const blob = await processImageFill(file, spec.w, spec.h);
-            const fileName = `${spec.name}.jpg`;
-            const url = URL.createObjectURL(blob);
+            let targetSpecs = [];
+            // 가이드라인에 맞춘 명칭 설정
+            if (ratio > 1.2) {
+                targetSpecs = [
+                    { w: 1200, h: 750, name: '1200_x' },
+                    { w: 1080, h: 720, name: 'c_rolling_banner_x' }
+                ];
+            } else {
+                targetSpecs = [
+                    { w: 1000, h: 1000, name: '1000_x' },
+                    { w: 600, h: 800, name: 'y_thumbnail_banner' }
+                ];
+            }
 
-            // 미리보기 생성
-            const previewDiv = document.createElement('div');
-            previewDiv.className = 'preview-box';
-            previewDiv.innerHTML = `<img src="${url}"><br><small>${fileName}</small>`;
-            resultContainer.appendChild(previewDiv);
-
-            zip.file(fileName, blob);
+            for (const spec of targetSpecs) {
+                canvas.width = spec.w;
+                canvas.height = spec.h;
+                const blob = await processImageFill(imgData.img, spec.w, spec.h);
+                
+                // [수정] originalName을 빼고 spec.name으로만 저장
+                const fileName = `${spec.name}.jpg`;
+                zip.file(fileName, blob);
+                
+                // 미리보기
+                const url = URL.createObjectURL(blob);
+                const previewDiv = document.createElement('div');
+                previewDiv.className = 'preview-box';
+                previewDiv.innerHTML = `<img src="${url}"><br><small><strong>${fileName}</strong></small>`;
+                resultContainer.appendChild(previewDiv);
+            }
         }
 
         const content = await zip.generateAsync({type: "blob"});
         const zipLink = document.createElement('a');
         zipLink.href = URL.createObjectURL(content);
-        zipLink.download = `text_O_banners.zip`;
+        zipLink.download = `text_O_all_files.zip`;
         zipLink.click();
 
-        status.innerText = "✅ 추출 완료!";
-        setTimeout(() => { status.innerText = ""; }, 3000);
+        status.innerText = "✅ 접미사 없이 추출 완료!";
     }
 
-    function processImageFill(file, targetW, targetH) {
+    function getImageData(file) {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const img = new Image();
-                img.onload = () => {
-                    ctx.fillStyle = "white";
-                    ctx.fillRect(0, 0, targetW, targetH);
-                    let scale = Math.max(targetW / img.width, targetH / img.height);
-                    let w = img.width * scale;
-                    let h = img.height * scale;
-                    let x = (targetW - w) / 2;
-                    let y = (targetH - h) / 2;
-                    ctx.drawImage(img, x, y, w, h);
-                    canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.8);
-                };
+                img.onload = () => resolve({ img, width: img.width, height: img.height });
                 img.src = e.target.result;
             };
             reader.readAsDataURL(file);
+        });
+    }
+
+    function processImageFill(img, targetW, targetH) {
+        return new Promise((resolve) => {
+            let scale = Math.max(targetW / img.width, targetH / img.height);
+            let w = img.width * scale;
+            let h = img.height * scale;
+            let x = (targetW - w) / 2;
+            let y = (targetH - h) / 2;
+            ctx.drawImage(img, x, y, w, h);
+            canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.9);
         });
     }
 </script>
